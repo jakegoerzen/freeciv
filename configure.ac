@@ -262,6 +262,9 @@ case "$host_os" in
     HAIKU=yes
     LIBS="$LIBS -lnetwork"
     ;;
+  *solaris*)
+    LIBS="$LIBS -lsocket -lnsl"
+    ;;
 esac
 
 dnl Networking headers
@@ -271,6 +274,8 @@ dnl Avoid including the unix emulation layer if we build mingw executables
 dnl There would be type conflicts between winsock and bsd/unix includes
 if test "x$MINGW" != "xyes"; then
   AC_CHECK_HEADERS([sys/socket.h], [AC_DEFINE([FREECIV_HAVE_SYS_SOCKET_H], [1], [sys/socket.h available])])
+dnl for Solaris/Illumos see man getaddrinfo
+  AC_CHECK_HEADERS([netdb.h], [AC_DEFINE([FREECIV_HAVE_NETDB_H], [1], [netdb.h available])])
 fi
 
 dnl Check getaddrinfo just once here, and remember the result
