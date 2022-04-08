@@ -26,6 +26,7 @@
 #include "achievements.h"
 #include "calendar.h"
 #include "citizens.h"
+#include "counters.h"
 #include "culture.h"
 #include "game.h"
 #include "government.h"
@@ -379,12 +380,19 @@ void universal_value_from_str(struct universal *source, const char *value)
     }
     break;
   case VUT_MINLATITUDE:
+  case VUT_MAXLATITUDE:
     source->value.latitude = atoi(value);
     if (source->value.latitude >= -MAP_MAX_LATITUDE
         && source->value.latitude <= MAP_MAX_LATITUDE) {
       return;
     }
     break;
+  case VUT_COUNTER:
+   source->value.counter = counter_by_rule_name(value);
+   if (source->value.counter != NULL) {
+      return;
+   }
+   break;
   case VUT_COUNT:
     break;
   }
@@ -586,7 +594,11 @@ struct universal universal_by_number(const enum universals_n kind,
   case VUT_CITYSTATUS:
     source.value.citystatus = value;
     return source;
+  case VUT_COUNTER:
+    source.value.counter = counter_by_id(value);
+    return source;
   case VUT_MINLATITUDE:
+  case VUT_MAXLATITUDE:
     source.value.latitude = value;
     return source;
   case VUT_COUNT:
@@ -712,7 +724,10 @@ int universal_number(const struct universal *source)
     return source->value.citytile;
   case VUT_CITYSTATUS:
     return source->value.citystatus;
+  case VUT_COUNTER:
+    return counter_id(source->value.counter);
   case VUT_MINLATITUDE:
+  case VUT_MAXLATITUDE:
     return source->value.latitude;
   case VUT_COUNT:
     break;
@@ -814,8 +829,10 @@ struct requirement req_from_str(const char *type, const char *range,
       case VUT_CITYTILE:
       case VUT_MAXTILEUNITS:
       case VUT_MINLATITUDE:
+      case VUT_MAXLATITUDE:
         req.range = REQ_RANGE_TILE;
         break;
+      case VUT_COUNTER:
       case VUT_MINSIZE:
       case VUT_MINCULTURE:
       case VUT_MINFOREIGNPCT:
@@ -955,7 +972,6 @@ struct requirement req_from_str(const char *type, const char *range,
       invalid = (req.range != REQ_RANGE_LOCAL);
       break;
     case VUT_TERRAINALTER: /* XXX could in principle support C/ADJACENT */
-    case VUT_MINLATITUDE:
       invalid = (req.range != REQ_RANGE_TILE);
       break;
     case VUT_CITYTILE:
@@ -963,6 +979,17 @@ struct requirement req_from_str(const char *type, const char *range,
       invalid = (req.range != REQ_RANGE_TILE
                  && req.range != REQ_RANGE_CADJACENT
                  && req.range != REQ_RANGE_ADJACENT);
+      break;
+    case VUT_MINLATITUDE:
+    case VUT_MAXLATITUDE:
+      invalid = (req.range != REQ_RANGE_TILE
+                 && req.range != REQ_RANGE_CADJACENT
+                 && req.range != REQ_RANGE_ADJACENT
+                 && req.range != REQ_RANGE_WORLD)
+                /* Avoid redundancy at tile range: no negated requirements
+                 * that could be emulated by a present requirement of the
+                 * other type */
+                || (req.range == REQ_RANGE_TILE && !req.present);
       break;
     case VUT_MINYEAR:
     case VUT_MINCALFRAG:
@@ -979,6 +1006,9 @@ struct requirement req_from_str(const char *type, const char *range,
     case VUT_IMPR_GENUS:
       /* TODO: Support other ranges too. */
       invalid = req.range != REQ_RANGE_LOCAL;
+      break;
+    case VUT_COUNTER:
+      invalid = req.range != REQ_RANGE_CITY;
       break;
     case VUT_IMPROVEMENT:
       /* Valid ranges depend on the building genus (wonder/improvement),
@@ -1007,6 +1037,7 @@ struct requirement req_from_str(const char *type, const char *range,
     case VUT_ADVANCE:
       invalid = survives && req.range != REQ_RANGE_WORLD;
       break;
+    case VUT_COUNTER:
     case VUT_IMPR_GENUS:
     case VUT_GOVERNMENT:
     case VUT_TERRAIN:
@@ -1053,6 +1084,7 @@ struct requirement req_from_str(const char *type, const char *range,
     case VUT_MAXTILEUNITS:
     case VUT_MINTECHS:
     case VUT_MINLATITUDE:
+    case VUT_MAXLATITUDE:
       /* Most requirements don't support 'survives'. */
       invalid = survives;
       break;
@@ -1317,23 +1349,54 @@ bool are_requirements_contradictions(const struct requirement *req1,
     }
     break;
   case VUT_MINLATITUDE:
-    if (req2->source.kind != VUT_MINLATITUDE) {
-      /* Finding contradictions across requirement kinds aren't supported
-       * for MinLatitude requirements. */
-      return FALSE;
-    } else if (req1->present == req2->present) {
-      /* No contradiction possible. */
+  case VUT_MAXLATITUDE:
+    if (req2->source.kind != VUT_MINLATITUDE
+        && req2->source.kind != VUT_MAXLATITUDE) {
+      /* Finding contradictions across requirement kinds other than each
+       * other is not supported for MinLatitude and MaxLatitude. */
       return FALSE;
     } else {
-      /* Contradiction when lower bound (present requirement) is not less
-       * (i.e. greater or equal) than upper bound (negated requirement) */
-      if (req1->present) {
-        return (req1->source.value.latitude
-                >= req2->source.value.latitude);
-      } else {
-        return (req1->source.value.latitude
-                <= req2->source.value.latitude);
+      /* For a contradiction, we need
+       * - a minimum (present MinLatitude or negated MaxLatitude)
+       * - a maximum (negated MinLatitude or present MaxLatitude)
+       * - the maximum to be less than the minimum
+       * - a requirement at the larger range that applies to the entire
+       *   range (i.e. a negated requirement, unless the range is Tile)
+       *   Otherwise, the two requirements could still be fulfilled
+       *   simultaneously by different tiles in the range */
+
+      /* Initial values beyond the boundaries to avoid edge cases */
+      int minimum = -MAP_MAX_LATITUDE - 1, maximum = MAP_MAX_LATITUDE + 1;
+      enum req_range covered_range = REQ_RANGE_TILE;
+
+#define EXTRACT_INFO(req)                                                 \
+      if (req->present) {                                                 \
+        if (req->source.kind == VUT_MINLATITUDE) {                        \
+          /* present MinLatitude */                                       \
+          minimum = MAX(minimum, req->source.value.latitude);             \
+        } else {                                                          \
+          /* present MaxLatitude */                                       \
+          maximum = MIN(maximum, req->source.value.latitude);             \
+        }                                                                 \
+      } else {                                                            \
+        covered_range = MAX(covered_range, req->range);                   \
+        if (req1->source.kind == VUT_MINLATITUDE) {                       \
+          /* negated MinLatitude */                                       \
+          maximum = MIN(maximum, req->source.value.latitude - 1);         \
+        } else {                                                          \
+          /* negated MaxLatitude */                                       \
+          minimum = MAX(minimum, req->source.value.latitude + 1);         \
+        }                                                                 \
       }
+
+      EXTRACT_INFO(req1);
+      EXTRACT_INFO(req2);
+
+#undef EXTRACT_INFO
+
+      return (maximum < minimum
+              && covered_range >= req1->range
+              && covered_range >= req2->range);
     }
     break;
   case VUT_NATION:
@@ -2684,7 +2747,7 @@ static enum fc_tristate is_diplrel_in_range(const struct player *target_player,
 }
 
 /**********************************************************************//**
-  Is the diplomatic state within range of anny unit at the target tile?
+  Is the diplomatic state within range of any unit at the target tile?
 **************************************************************************/
 static enum fc_tristate
 is_diplrel_unitany_in_range(const struct tile *target_tile,
@@ -2824,8 +2887,9 @@ static enum fc_tristate is_unit_state(const struct unit *target_unit,
   }
 
   /* Should never be reached */
-  fc_assert_ret_val_msg(FALSE, TRI_NO,
-                        "Unsupported unit property %d", uprop);
+  fc_assert_msg(FALSE, "Unsupported unit property %d", uprop);
+
+  return TRI_NO;
 }
 
 /**********************************************************************//**
@@ -3248,6 +3312,88 @@ is_achievement_in_range(const struct player *target_player,
 }
 
 /**********************************************************************//**
+  Is a tile with at least/most the given latitude in range.
+
+  kind must be VUT_MINLATITUDE or VUT_MAXLATITUDE
+**************************************************************************/
+static enum fc_tristate
+is_latitude_in_range(const struct tile *target_tile, enum req_range range,
+                     enum universals_n kind, int latitude)
+{
+  int min = -MAP_MAX_LATITUDE, max = MAP_MAX_LATITUDE;
+
+  switch (kind) {
+  case VUT_MINLATITUDE:
+    min = latitude;
+    break;
+  case VUT_MAXLATITUDE:
+    max = latitude;
+    break;
+  default:
+    fc_assert(kind == VUT_MINLATITUDE || kind == VUT_MAXLATITUDE);
+    break;
+  }
+
+  switch (range) {
+  case REQ_RANGE_WORLD:
+    return BOOL_TO_TRISTATE(min <= MAP_MAX_REAL_LATITUDE(wld.map)
+                            && max >= MAP_MIN_REAL_LATITUDE(wld.map));
+
+  case REQ_RANGE_TILE:
+    if (target_tile == NULL) {
+      return TRI_MAYBE;
+    } else {
+      int tile_lat = map_signed_latitude(target_tile);
+
+      return BOOL_TO_TRISTATE(min <= tile_lat && max >= tile_lat);
+    }
+
+  case REQ_RANGE_CADJACENT:
+    if (target_tile == NULL) {
+      return TRI_MAYBE;
+    }
+
+    cardinal_adjc_iterate(&(wld.map), target_tile, adjc_tile) {
+      int tile_lat = map_signed_latitude(target_tile);
+
+      if (min <= tile_lat && max >= tile_lat) {
+        return TRI_YES;
+      }
+    } cardinal_adjc_iterate_end;
+    return TRI_NO;
+
+  case REQ_RANGE_ADJACENT:
+    if (!target_tile) {
+      return TRI_MAYBE;
+    }
+
+    adjc_iterate(&(wld.map), target_tile, adjc_tile) {
+      int tile_lat = map_signed_latitude(target_tile);
+
+      if (min <= tile_lat && max >= tile_lat) {
+        return TRI_YES;
+      }
+    } adjc_iterate_end;
+    return TRI_NO;
+
+  case REQ_RANGE_CITY:
+  case REQ_RANGE_TRADEROUTE:
+  case REQ_RANGE_CONTINENT:
+  case REQ_RANGE_PLAYER:
+  case REQ_RANGE_TEAM:
+  case REQ_RANGE_ALLIANCE:
+  case REQ_RANGE_LOCAL:
+  case REQ_RANGE_COUNT:
+    break;
+  }
+
+  fc_assert_msg(FALSE,
+                "Illegal range %d for latitude requirement.", range);
+
+  return TRI_MAYBE;
+}
+
+/**********************************************************************//**
   Checks the requirement to see if it is active on the given target.
 
   context gives the target (or targets) to evaluate against
@@ -3287,6 +3433,18 @@ bool is_req_active(const struct req_context *context,
     eval = is_techflag_in_range(context->player, req->range,
                                 req->source.value.techflag);
     break;
+  case VUT_COUNTER:
+    if (NULL == context || NULL == context->city) {
+      eval = TRI_MAYBE;
+    } else {
+      struct counter *count = req->source.value.counter;
+
+      eval =
+        BOOL_TO_TRISTATE(count->checkpoint <=
+                         context->city->counter_values[
+                         counter_index(count)]);
+    }
+   break;
   case VUT_GOVERNMENT:
     /* The requirement is filled if the player is using the government. */
     if (context->player == NULL) {
@@ -3626,12 +3784,10 @@ bool is_req_active(const struct req_context *context,
     }
     break;
   case VUT_MINLATITUDE:
-    if (context->tile == NULL) {
-      eval = TRI_MAYBE;
-    } else {
-      eval = BOOL_TO_TRISTATE(map_signed_latitude(context->tile)
-                              >= req->source.value.latitude);
-    }
+  case VUT_MAXLATITUDE:
+    eval = is_latitude_in_range(context->tile, req->range,
+                                req->source.kind,
+                                req->source.value.latitude);
     break;
   case VUT_COUNT:
     log_error("is_req_active(): invalid source kind %d.", req->source.kind);
@@ -3703,11 +3859,13 @@ bool is_req_unchanging(const struct requirement *req)
   case VUT_TOPO:
   case VUT_SERVERSETTING:
   case VUT_MINLATITUDE: /* Might change if more ranges are supported */
+  case VUT_MAXLATITUDE: /* Might change if more ranges are supported */
     return TRUE;
   case VUT_NATION:
   case VUT_NATIONGROUP:
     return (req->range != REQ_RANGE_ALLIANCE);
   case VUT_ADVANCE:
+  case VUT_COUNTER:
   case VUT_TECHFLAG:
   case VUT_GOVERNMENT:
   case VUT_ACHIEVEMENT:
@@ -3813,10 +3971,10 @@ bool universal_never_there(const struct universal *source)
   case VUT_EXTRAFLAG:
     return !extra_flag_is_in_use(source->value.extraflag);
   case VUT_MINLATITUDE:
-    /* If the map is not alltemperate, there is always a north pole with
-     * MAP_MAX_LATITUDE. Otherwise, everything is MAP_MAX_LATITUDE / 2. */
-    return (wld.map.alltemperate
-            && source->value.latitude > (MAP_MAX_LATITUDE / 2));
+    return source->value.latitude > MAP_MAX_REAL_LATITUDE(wld.map);
+  case VUT_MAXLATITUDE:
+    return source->value.latitude < MAP_MIN_REAL_LATITUDE(wld.map);
+  case VUT_COUNTER:
   case VUT_OTYPE:
   case VUT_SPECIALIST:
   case VUT_AI_LEVEL:
@@ -4381,6 +4539,8 @@ bool are_universals_equal(const struct universal *psource1,
   switch (psource1->kind) {
   case VUT_NONE:
     return TRUE;
+  case VUT_COUNTER:
+    return psource1->value.counter == psource2->value.counter;
   case VUT_ADVANCE:
     return psource1->value.advance == psource2->value.advance;
   case VUT_TECHFLAG:
@@ -4475,6 +4635,7 @@ bool are_universals_equal(const struct universal *psource1,
   case VUT_CITYSTATUS:
     return psource1->value.citystatus == psource2->value.citystatus;
   case VUT_MINLATITUDE:
+  case VUT_MAXLATITUDE:
     return psource1->value.latitude == psource2->value.latitude;
   case VUT_COUNT:
     break;
@@ -4495,6 +4656,8 @@ const char *universal_rule_name(const struct universal *psource)
   switch (psource->kind) {
   case VUT_NONE:
     return "(none)";
+  case VUT_COUNTER:
+    return counter_rule_name(psource->value.counter);
   case VUT_CITYTILE:
     return citytile_type_name(psource->value.citytile);
   case VUT_CITYSTATUS:
@@ -4610,6 +4773,7 @@ const char *universal_rule_name(const struct universal *psource)
   case VUT_TERRAINALTER:
     return terrain_alteration_name(psource->value.terrainalter);
   case VUT_MINLATITUDE:
+  case VUT_MAXLATITUDE:
     fc_snprintf(buffer, sizeof(buffer), "%d", psource->value.latitude);
 
     return buffer;
@@ -4640,6 +4804,9 @@ const char *universal_name_translation(const struct universal *psource,
     return buf;
   case VUT_ADVANCE:
     fc_strlcat(buf, advance_name_translation(psource->value.advance), bufsz);
+    return buf;
+  case VUT_COUNTER:
+    fc_strlcat(buf, counter_name_translation(psource->value.counter), bufsz);
     return buf;
   case VUT_TECHFLAG:
     cat_snprintf(buf, bufsz, _("\"%s\" tech"),
@@ -4915,6 +5082,11 @@ const char *universal_name_translation(const struct universal *psource,
   case VUT_MINLATITUDE:
     /* TRANS: here >= means 'greater than or equal'. */
     cat_snprintf(buf, bufsz, _("Latitude >= %d"),
+                 psource->value.latitude);
+    return buf;
+  case VUT_MAXLATITUDE:
+    /* TRANS: here <= means 'greater than or equal'. */
+    cat_snprintf(buf, bufsz, _("Latitude <= %d"),
                  psource->value.latitude);
     return buf;
   case VUT_COUNT:

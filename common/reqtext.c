@@ -23,6 +23,7 @@
 #include "achievements.h"
 #include "actions.h"
 #include "calendar.h"
+#include "counters.h"
 #include "extras.h"
 #include "government.h"
 #include "map.h"
@@ -54,6 +55,23 @@ bool req_text_insert(char *buf, size_t bufsz, struct player *pplayer,
   case VUT_NONE:
     return FALSE;
 
+  case VUT_COUNTER:
+    if (preq->present) {
+
+      fc_strlcat(buf, prefix, bufsz);
+      cat_snprintf(buf, bufsz,
+                 _("Requires counter %s to achieve at minimum %d value"),
+                 counter_rule_name(preq->source.value.counter),
+                 preq->source.value.counter->checkpoint);
+    } else {
+
+      fc_strlcat(buf, prefix, bufsz);
+      cat_snprintf(buf, bufsz,
+                   _("Requires counter %s to be less than %d value"),
+                   counter_rule_name(preq->source.value.counter),
+                   preq->source.value.counter->checkpoint - 1);
+    }
+    break;
   case VUT_ADVANCE:
     switch (preq->range) {
     case REQ_RANGE_PLAYER:
@@ -2883,9 +2901,7 @@ bool req_text_insert(char *buf, size_t bufsz, struct player *pplayer,
     }
 
   case VUT_CITYSTATUS:
-    if (preq->source.value.citystatus == CITYS_LAST) {
-      break;
-    } else {
+    if (preq->source.value.citystatus != CITYS_LAST) {
       static char *city_property = NULL;
 
       switch (preq->source.value.citystatus) {
@@ -2945,9 +2961,24 @@ bool req_text_insert(char *buf, size_t bufsz, struct player *pplayer,
         break;
       }
     }
+    break;
 
   case VUT_MINLATITUDE:
     switch (preq->range) {
+    case REQ_RANGE_WORLD:
+      fc_strlcat(buf, prefix, bufsz);
+      if (preq->present) {
+        cat_snprintf(buf, bufsz,
+                     _("Some part of the world must be at latitude %d or "
+                       "further north."),
+                     preq->source.value.latitude);
+      } else {
+        cat_snprintf(buf, bufsz,
+                     _("The entire world must be at latitude %d or "
+                       "further south."),
+                     preq->source.value.latitude - 1);
+      }
+      return TRUE;
     case REQ_RANGE_TILE:
       fc_strlcat(buf, prefix, bufsz);
       if (preq->present) {
@@ -2961,14 +2992,108 @@ bool req_text_insert(char *buf, size_t bufsz, struct player *pplayer,
       }
       return TRUE;
     case REQ_RANGE_CADJACENT:
+      fc_strlcat(buf, prefix, bufsz);
+      if (preq->present) {
+        cat_snprintf(buf, bufsz,
+                     _("A cardinally adjacent tile must be at latitude "
+                       "%d or further north."),
+                     preq->source.value.latitude);
+      } else {
+        cat_snprintf(buf, bufsz,
+                     _("All cardinally adjacent tiles must be at latitude "
+                       "%d or further south."),
+                     preq->source.value.latitude - 1);
+      }
+      return TRUE;
     case REQ_RANGE_ADJACENT:
+      fc_strlcat(buf, prefix, bufsz);
+      if (preq->present) {
+        cat_snprintf(buf, bufsz,
+                     _("An adjacent tile must be at latitude %d or "
+                       "further north."),
+                     preq->source.value.latitude);
+      } else {
+        cat_snprintf(buf, bufsz,
+                     _("All adjacent tiles must be at latitude %d or "
+                       "further south."),
+                     preq->source.value.latitude - 1);
+      }
+      return TRUE;
     case REQ_RANGE_CITY:
     case REQ_RANGE_TRADEROUTE:
     case REQ_RANGE_CONTINENT:
     case REQ_RANGE_PLAYER:
     case REQ_RANGE_TEAM:
     case REQ_RANGE_ALLIANCE:
+    case REQ_RANGE_LOCAL:
+    case REQ_RANGE_COUNT:
+      /* Not supported. */
+      break;
+    }
+    break;
+
+  case VUT_MAXLATITUDE:
+    switch (preq->range) {
     case REQ_RANGE_WORLD:
+      fc_strlcat(buf, prefix, bufsz);
+      if (preq->present) {
+        cat_snprintf(buf, bufsz,
+                     _("Some part of the world must be at latitude %d or "
+                       "further south."),
+                     preq->source.value.latitude);
+      } else {
+        cat_snprintf(buf, bufsz,
+                     _("The entire world must be at latitude %d or "
+                       "further north."),
+                     preq->source.value.latitude + 1);
+      }
+      return TRUE;
+    case REQ_RANGE_TILE:
+      fc_strlcat(buf, prefix, bufsz);
+      if (preq->present) {
+        cat_snprintf(buf, bufsz,
+                     _("Tile must be at latitude %d or further south."),
+                     preq->source.value.latitude);
+      } else {
+        cat_snprintf(buf, bufsz,
+                     _("Tile must be at latitude %d or further north."),
+                     preq->source.value.latitude + 1);
+      }
+      return TRUE;
+    case REQ_RANGE_CADJACENT:
+      fc_strlcat(buf, prefix, bufsz);
+      if (preq->present) {
+        cat_snprintf(buf, bufsz,
+                     _("A cardinally adjacent tile must be at latitude "
+                       "%d or further south."),
+                     preq->source.value.latitude);
+      } else {
+        cat_snprintf(buf, bufsz,
+                     _("All cardinally adjacent tiles must be at latitude "
+                       "%d or further north."),
+                     preq->source.value.latitude + 1);
+      }
+      return TRUE;
+    case REQ_RANGE_ADJACENT:
+      fc_strlcat(buf, prefix, bufsz);
+      if (preq->present) {
+        cat_snprintf(buf, bufsz,
+                     _("An adjacent tile must be at latitude %d or "
+                       "further south."),
+                     preq->source.value.latitude);
+      } else {
+        cat_snprintf(buf, bufsz,
+                     _("All adjacent tiles must be at latitude %d or "
+                       "further north."),
+                     preq->source.value.latitude + 1);
+      }
+      return TRUE;
+    case REQ_RANGE_CITY:
+    case REQ_RANGE_TRADEROUTE:
+    case REQ_RANGE_CONTINENT:
+    case REQ_RANGE_PLAYER:
+    case REQ_RANGE_TEAM:
+    case REQ_RANGE_ALLIANCE:
     case REQ_RANGE_LOCAL:
     case REQ_RANGE_COUNT:
       /* Not supported. */

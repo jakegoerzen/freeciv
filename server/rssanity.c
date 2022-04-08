@@ -288,6 +288,13 @@ static bool sanity_check_req_set(int reqs_of_type[],
          return FALSE;
        }
        break;
+     case VUT_MINLATITUDE:
+     case VUT_MAXLATITUDE:
+       if (tile_reqs_of_type[preq->range] > 1) {
+         log_error("%s: Requirement list has duplicate %s requirement at Tile range",
+                   list_for, universal_type_rule_name(&preq->source));
+         return FALSE;
+       }
      default:
        break;
     }
@@ -315,7 +322,6 @@ static bool sanity_check_req_set(int reqs_of_type[],
      case VUT_STYLE:
      case VUT_IMPR_GENUS:
      case VUT_CITYSTATUS:
-     case VUT_MINLATITUDE: /* Breaks nothing, but has no sense either */
        /* There can be only one requirement of these types (with current
         * range limitations)
         * Requirements might be identical, but we consider multiple
@@ -365,6 +371,9 @@ static bool sanity_check_req_set(int reqs_of_type[],
       }
       break;
 
+    case VUT_COUNTER:
+      /* Can have multiple, since many counters (also of the same range)
+       * can met checkpoint */
      case VUT_SERVERSETTING:
        /* Can have multiple, since there are many settings. */
      case VUT_TOPO:
@@ -399,6 +408,9 @@ static bool sanity_check_req_set(int reqs_of_type[],
      case VUT_DIPLREL_UNITANY:
      case VUT_DIPLREL_UNITANY_O:
        /* Can have multiple requirements of these types */
+     case VUT_MINLATITUDE:
+     case VUT_MAXLATITUDE:
+       /* Can have multiple requirements at different ranges */
        break;
      case VUT_COUNT:
        /* Should never be in requirement vector */
@@ -412,6 +424,57 @@ static bool sanity_check_req_set(int reqs_of_type[],
   }
 
   return TRUE;
+}
+
+/**********************************************************************//**
+  Helper function: Sanity check potential 'singlepole' server setting
+  requirement in a requirement vector.
+  'conjunctive' should be TRUE if the vector is an AND vector (all
+  requirements must be active), FALSE if it's a disjunctive (OR) vector.
+
+  Returns TRUE iff everything ok.
+**************************************************************************/
+static bool
+sanity_check_req_vec_singlepole(const struct requirement_vector *preqs,
+                                bool conjunctive, const char *list_for)
+{
+  bool has_singlepole_req = FALSE;
+
+  requirement_vector_iterate(preqs, preq) {
+    server_setting_id id;
+    struct setting *pset;
+
+    if (preq->source.kind != VUT_SERVERSETTING) {
+      continue;
+    }
+
+    id = ssetv_setting_get(preq->source.value.ssetval);
+    fc_assert_ret_val(server_setting_exists(id), FALSE);
+    pset = setting_by_number(id);
+
+    if (pset == setting_by_name("singlepole")) {
+      has_singlepole_req = TRUE;
+    } else if (pset == setting_by_name("alltemperate")
+                && XOR(conjunctive, preq->present)) {
+      return TRUE;
+    }
+  } requirement_vector_iterate_end;
+
+  if (!has_singlepole_req) {
+    /* all good */
+    return TRUE;
+  }
+
+  if (conjunctive) {
+    log_error("%s: Requirement list containing 'singlepole' server"
+              " setting requirement must also have negated (!present)"
+              " 'alltemperate' requirement", list_for);
+  } else {
+    log_error("%s: Disjunctive requirement list containing 'singlepole'"
+              " server setting requirement must also have present"
+              " 'alltemperate' requirement", list_for);
+  }
+  return FALSE;
 }
 
 /**********************************************************************//**
@@ -450,6 +513,10 @@ static bool sanity_check_req_vec(const struct requirement_vector *preqs,
       return FALSE;
     }
   } requirement_vector_iterate_end;
+
+  if (!sanity_check_req_vec_singlepole(preqs, conjunctive, list_for)) {
+    return FALSE;
+  }
 
   problem = req_vec_suggest_repair(preqs, req_vec_vector_number, preqs);
   if (problem != NULL) {
@@ -1401,34 +1468,34 @@ bool autoadjust_ruleset_data(void)
       const enum action_result blocked;
       const enum action_result blocker;
     } must_block[] = {
-      /* Hard code that Help Wonder blocks Recycle Unit. This must be done
+      /* Hard code that Help Wonder blocks Disband Unit Recover. This must be done
        * because caravan_shields makes it possible to avoid the
-       * consequences of choosing to do Recycle Unit rather than having it
+       * consequences of choosing to do Disband Unit Recover rather than having it
        * do Help Wonder.
        *
-       * Explanation: Recycle Unit adds 50% of the shields used to produce
+       * Explanation: Disband Unit Recover adds 50% of the shields used to produce
        * the unit to the production of the city where it is located. Help
-       * Wonder adds 100%. If a unit that can do Help Wonder is recycled in
-       * a city and the production later is changed to something that can
-       * receive help from Help Wonder the remaining 50% of the shields are
-       * added. This can be done because the city remembers them in
-       * caravan_shields.
+       * Wonder adds 100%. If a unit that can do Help Wonder is disbanded with
+       * production recovery in a city and the production later is changed
+       * to something that can receive help from Help Wonder the remaining 50%
+       * of the shields are added. This can be done because the city remembers
+       * them in caravan_shields.
        *
-       * If a unit that can do Help Wonder intentionally is recycled rather
-       * than making it do Help Wonder its shields will still be
+       * If a unit that can do Help Wonder intentionally is disbanded with recovery
+       * rather than making it do Help Wonder its shields will still be
        * remembered. The target city that got 50% of the shields can
        * therefore get 100% of them by changing its production. This trick
-       * makes the ability to select Recycle Unit when Help Wonder is legal
+       * makes the ability to select Disband Unit Recover when Help Wonder is legal
        * pointless. */
-      { ACTRES_RECYCLE_UNIT, ACTRES_HELP_WONDER },
+      { ACTRES_DISBAND_UNIT_RECOVER, ACTRES_HELP_WONDER },
 
       /* Allowing regular disband when ACTION_HELP_WONDER or
-       * ACTION_RECYCLE_UNIT is legal while ACTION_HELP_WONDER always
-       * blocks ACTION_RECYCLE_UNIT doesn't work well with the force_*
+       * ACTION_DISBAND_UNIT_RECOVER is legal while ACTION_HELP_WONDER always
+       * blocks ACTION_DISBAND_UNIT_RECOVER doesn't work well with the force_*
        * semantics. Should move to the ruleset once it has blocked_by
        * semantics. */
       { ACTRES_DISBAND_UNIT, ACTRES_HELP_WONDER },
-      { ACTRES_DISBAND_UNIT, ACTRES_RECYCLE_UNIT },
+      { ACTRES_DISBAND_UNIT, ACTRES_DISBAND_UNIT_RECOVER },
 
       /* Hard code that the ability to perform a regular attack blocks city
        * conquest. Is redundant as long as the requirement that the target

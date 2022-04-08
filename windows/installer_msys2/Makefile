@@ -43,12 +43,22 @@ INSTSUB=${ARCHDIR}
 # msys2 has dlls in...
 DLLPATH_PREFIX=/$(ARCHDIR)/bin/
 
+ifeq ($(CI),yes)
+MAGICKVER=7.Q16HDRI-10
+else
+MAGICKVER=7.Q16HDRI-7
+endif
+
 #
 # Make rules
 #
 
 # by default build all installers.
-all: gtk3.22-installer sdl2-installer ruledit-installer qt-installer
+all: all-$(WINARCH)
+
+all-win64: gtk3.22-installer sdl2-installer ruledit-installer qt5-installer qt6-installer
+
+all-win32: gtk3.22-installer sdl2-installer ruledit-installer qt5-installer
 
 gtk3.22-installer:
 	make GUI=gtk3.22 CLIENT=gtk3.22 FCMP=gtk3 EXTRA_CONFIG="--disable-ruledit $(EXTRA_CONFIG)" wrap-gtk3.22
@@ -85,7 +95,7 @@ snapshot:
 
 ci:
 	cd ../.. ; ./autogen.sh --no-configure-run
-	make VERSION_REVTYPE="git" CI=yes EXTRA_CONFIG="--enable-gitrev --with-project-definition=../../../bootstrap/snapshot.project CFLAGS=\\\"-Werror $$CFLAGS\\\" CXXFLAGS=\\\"-Werror $$CXXFLAGS\\\"" gtk3.22-installer sdl2-installer ruledit-installer qt6-installer
+	make VERSION_REVTYPE="git" CI=yes EXTRA_CONFIG="--enable-gitrev --with-project-definition=../../../bootstrap/snapshot.project CFLAGS=\\\"-Werror $$CFLAGS\\\" CXXFLAGS=\\\"-Werror $$CXXFLAGS\\\"" gtk3.22-installer sdl2-installer ruledit-installer-qt6 qt6-installer
 
 # configure Freeciv
 
@@ -110,11 +120,14 @@ configure-freeciv-ruledit-qt6:
 # install Freeciv
 
 install-freeciv-common: configure-freeciv-common
-	# make install
-	make -C build-$(WINARCH)-$(GUI) DESTDIR=`pwd`/install-$(WINARCH)-$(GUI) $(MAKE_PARAMS) install
-	# make langstat files. This update-po must be after fc_gitrev_gen.h generation.
+	# make .gmo and langstat files. For the former, this needs to be before 'make install'
 	make -C build-$(WINARCH)-$(GUI)/translations/core update-po
 	make -C build-$(WINARCH)-$(GUI)/bootstrap langstat_core.txt
+	# Restore .po files modified by the above update-po, so that repository does not
+	# appear modified, in case of --enable-gitrev
+	./cleanup_checkout.sh ../..
+	# make install
+	make -C build-$(WINARCH)-$(GUI) DESTDIR=`pwd`/install-$(WINARCH)-$(GUI) $(MAKE_PARAMS) install
 	# reorder directory layout
 	mv install-$(WINARCH)-$(GUI)/$(INSTSUB)/bin/* install-$(WINARCH)-$(GUI)/
 	mv install-$(WINARCH)-$(GUI)/$(INSTSUB)/etc install-$(WINARCH)-$(GUI)/
@@ -154,11 +167,14 @@ install-ruledit-dir-qt6:
 	mkdir -p install-$(WINARCH)-ruledit-qt6/share
 
 install-ruledit-qt5: configure-freeciv-ruledit-qt5 install-ruledit-dir-qt5
-	# make install
-	make -C build-$(WINARCH)-ruledit-qt5 DESTDIR=`pwd`/install-$(WINARCH)-ruledit-qt5/ $(MAKE_PARAMS) install
-	# make langstat files. This update-po must be after fc_gitrev_gen.h generation.
+	# make .gmo and langstat files. For the former, this needs to be before 'make install'
 	make -C build-$(WINARCH)-ruledit-qt5/translations/ruledit update-po
 	make -C build-$(WINARCH)-ruledit-qt5/bootstrap langstat_ruledit.txt
+	# Restore .po files modified by the above update-po, so that repository does not
+	# appear modified, in case of --enable-gitrev
+	./cleanup_checkout.sh ../..
+	# make install
+	make -C build-$(WINARCH)-ruledit-qt5 DESTDIR=`pwd`/install-$(WINARCH)-ruledit-qt5/ $(MAKE_PARAMS) install
 	# reorder directory layout
 	mv install-$(WINARCH)-ruledit-qt5/$(INSTSUB)/bin/* install-$(WINARCH)-ruledit-qt5/
 	mv install-$(WINARCH)-ruledit-qt5/$(INSTSUB)/share/freeciv install-$(WINARCH)-ruledit-qt5/data
@@ -176,11 +192,14 @@ install-ruledit-qt5: configure-freeciv-ruledit-qt5 install-ruledit-dir-qt5
 	cp freeciv-ruledit.cmd Freeciv.url install-$(WINARCH)-ruledit-qt5/
 
 install-ruledit-qt6: configure-freeciv-ruledit-qt6 install-ruledit-dir-qt6
-	# make install
-	make -C build-$(WINARCH)-ruledit-qt6 DESTDIR=`pwd`/install-$(WINARCH)-ruledit-qt6/ $(MAKE_PARAMS) install
-	# make langstat files. This update-po must be after fc_gitrev_gen.h generation.
+	# make .gmo and langstat files. For the former, this needs to be before 'make install'
 	make -C build-$(WINARCH)-ruledit-qt6/translations/ruledit update-po
 	make -C build-$(WINARCH)-ruledit-qt6/bootstrap langstat_ruledit.txt
+	# Restore .po files modified by the above update-po, so that repository does not
+	# appear modified, in case of --enable-gitrev
+	./cleanup_checkout.sh ../..
+	# make install
+	make -C build-$(WINARCH)-ruledit-qt6 DESTDIR=`pwd`/install-$(WINARCH)-ruledit-qt6/ $(MAKE_PARAMS) install
 	# reorder directory layout
 	mv install-$(WINARCH)-ruledit-qt6/$(INSTSUB)/bin/* install-$(WINARCH)-ruledit-qt6/
 	mv install-$(WINARCH)-ruledit-qt6/$(INSTSUB)/share/freeciv install-$(WINARCH)-ruledit-qt6/data
@@ -202,7 +221,7 @@ install-ruledit-qt6: configure-freeciv-ruledit-qt6 install-ruledit-dir-qt6
 SOUND_DLLS := \
 	SDL2.dll \
 	SDL2_mixer.dll \
-	libFLAC-8.dll \
+	libFLAC.dll \
 	libfluidsynth-3.dll \
 	libmodplug-1.dll \
 	libvorbis-0.dll \
@@ -264,8 +283,8 @@ COMMON_DLLS := \
 	libtermcap-0.dll \
 	libssp-0.dll \
 	libzstd.dll \
-	libMagickWand-7.Q16HDRI-7.dll \
-	libMagickCore-7.Q16HDRI-7.dll \
+	libMagickWand-${MAGICKVER}.dll \
+	libMagickCore-${MAGICKVER}.dll \
 	libgomp-1.dll \
 	libfftw3-3.dll \
 	liblcms2-2.dll \
@@ -391,7 +410,8 @@ QT6_DLLS := \
 	libharfbuzz-0.dll \
 	libgraphite2.dll \
 	libdouble-conversion.dll \
-	libmd4c.dll
+	libmd4c.dll \
+	libb2-1.dll
 
 install-env-qt6: install-env-common
 	# add DLLs
@@ -439,8 +459,8 @@ RULEDIT_QT5_DLLS := \
 	libpcre-1.dll \
 	libdouble-conversion.dll \
 	libzstd.dll \
-	libMagickWand-7.Q16HDRI-7.dll \
-	libMagickCore-7.Q16HDRI-7.dll \
+	libMagickWand-${MAGICKVER}.dll \
+	libMagickCore-${MAGICKVER}.dll \
 	libgomp-1.dll \
 	libfftw3-3.dll \
 	liblcms2-2.dll \
@@ -498,8 +518,8 @@ RULEDIT_QT6_DLLS := \
 	libpcre-1.dll \
 	libdouble-conversion.dll \
 	libzstd.dll \
-	libMagickWand-7.Q16HDRI-7.dll \
-	libMagickCore-7.Q16HDRI-7.dll \
+	libMagickWand-${MAGICKVER}.dll \
+	libMagickCore-${MAGICKVER}.dll \
 	libgomp-1.dll \
 	libfftw3-3.dll \
 	liblcms2-2.dll \

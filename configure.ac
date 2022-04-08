@@ -391,7 +391,7 @@ AC_SUBST([DESKTOPDIR])
 
 AC_ARG_WITH([appdatadir],
   AS_HELP_STRING([--with-appdatadir], [install appdata files to given dir]),
-[ APPDATADIR=${withval} ], [ APPDATADIR="\$(prefix)/share/appdata" ])
+[ APPDATADIR=${withval} ], [ APPDATADIR="\$(prefix)/share/metainfo" ])
 AC_SUBST([APPDATADIR])
 
 dnl try to support this development version's previous save games formats
@@ -994,15 +994,20 @@ if test "x$fctinycthr" = "xyes" ; then
 fi
 
 if test "x$thread_impl" = "xnone" ; then
-  LIBS="$LIBS -lpthread"
   AC_LINK_IFELSE([AC_LANG_PROGRAM([[#include <threads.h>]],
     [[return thrd_create(NULL, NULL, NULL);]])],
-    [AC_DEFINE([FREECIV_HAVE_C11_THREADS], [1], [Use C11 threads as thread implementation])
-    thread_impl=c11
+    [thread_impl=c11],
+    [LIBS="$LIBS -lpthread"
+    AC_LINK_IFELSE([AC_LANG_PROGRAM([[#include <threads.h>]],
+      [[return thrd_create(NULL, NULL, NULL);]])],
+      [thread_impl=c11], [LIBS="$LIBS_SAVE"])])
+
+  if test "$thread_impl" = "c11" ; then
+    AC_DEFINE([FREECIV_HAVE_C11_THREADS], [1], [Use C11 threads as thread implementation])
     AC_MSG_RESULT([C11])
     AC_DEFINE([FREECIV_HAVE_THREAD_COND], [1], [Has thread condition variable implementation])
-    thread_cond=true],
-    [LIBS="$LIBS_SAVE"])
+    thread_cond=true
+  fi
 fi
 
 if test x$crosser != xyes && test "x$thread_impl" = "xnone" ; then

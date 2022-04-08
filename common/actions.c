@@ -1144,8 +1144,8 @@ static void hard_code_actions(void)
       unit_action_new(ACTION_EXPEL_UNIT, ACTRES_EXPEL_UNIT,
                       FALSE, TRUE,
                       MAK_STAYS, 0, 1, FALSE);
-  actions[ACTION_RECYCLE_UNIT] =
-      unit_action_new(ACTION_RECYCLE_UNIT, ACTRES_RECYCLE_UNIT,
+  actions[ACTION_DISBAND_UNIT_RECOVER] =
+      unit_action_new(ACTION_DISBAND_UNIT_RECOVER, ACTRES_DISBAND_UNIT_RECOVER,
                       TRUE, TRUE, MAK_STAYS,
                       /* Illegal to perform to a target on another tile to
                        * keep the rules exactly as they were for now. */
@@ -1483,6 +1483,12 @@ static void hard_code_actions(void)
                       0, 1, FALSE);
   actions[ACTION_USER_ACTION3] =
       unit_action_new(ACTION_USER_ACTION3, ACTRES_NONE,
+                      FALSE, TRUE,
+                      MAK_UNREPRESENTABLE,
+                      /* Overwritten by the ruleset */
+                      0, 1, FALSE);
+  actions[ACTION_USER_ACTION4] =
+      unit_action_new(ACTION_USER_ACTION4, ACTRES_NONE,
                       FALSE, TRUE,
                       MAK_UNREPRESENTABLE,
                       /* Overwritten by the ruleset */
@@ -2311,7 +2317,7 @@ bool action_creates_extra(const struct action *paction,
   case ACTRES_NUKE_UNITS:
   case ACTRES_DESTROY_CITY:
   case ACTRES_EXPEL_UNIT:
-  case ACTRES_RECYCLE_UNIT:
+  case ACTRES_DISBAND_UNIT_RECOVER:
   case ACTRES_DISBAND_UNIT:
   case ACTRES_HOME_CITY:
   case ACTRES_HOMELESS:
@@ -2399,7 +2405,7 @@ bool action_removes_extra(const struct action *paction,
   case ACTRES_NUKE_UNITS:
   case ACTRES_DESTROY_CITY:
   case ACTRES_EXPEL_UNIT:
-  case ACTRES_RECYCLE_UNIT:
+  case ACTRES_DISBAND_UNIT_RECOVER:
   case ACTRES_DISBAND_UNIT:
   case ACTRES_HOME_CITY:
   case ACTRES_HOMELESS:
@@ -3138,7 +3144,7 @@ tgt_city_local_utype(const struct city *target_city)
   different target kind. The target tile could therefore be missing.
 
   Example: The ATK_SELF action ACTION_DISBAND_UNIT can be blocked by the
-  ATK_CITY action ACTION_RECYCLE_UNIT.
+  ATK_CITY action ACTION_DISBAND_UNIT_RECOVER.
 **************************************************************************/
 static const struct tile *
 blocked_find_target_tile(const struct action *act,
@@ -3167,7 +3173,8 @@ blocked_find_target_tile(const struct action *act,
     if (target_unit) {
       return unit_tile(target_unit);
     }
-    /* Fall through. */
+
+    fc__fallthrough;
   case ATK_TILE:
   case ATK_EXTRAS:
     fc_assert_ret_val(target_tile_arg, NULL);
@@ -3192,7 +3199,7 @@ blocked_find_target_tile(const struct action *act,
   missing.
 
   Example: The ATK_SELF action ACTION_DISBAND_UNIT can be blocked by the
-  ATK_CITY action ACTION_RECYCLE_UNIT.
+  ATK_CITY action ACTION_DISBAND_UNIT_RECOVER.
 **************************************************************************/
 static const struct city *
 blocked_find_target_city(const struct action *act,
@@ -3223,7 +3230,8 @@ blocked_find_target_city(const struct action *act,
       fc_assert_ret_val(unit_tile(target_unit), NULL);
       return tile_city(unit_tile(target_unit));
     }
-    /* Fall through. */
+
+    fc__fallthrough;
   case ATK_TILE:
   case ATK_EXTRAS:
     fc_assert_ret_val(target_tile, NULL);
@@ -3504,7 +3512,7 @@ action_actor_utype_hard_reqs_ok_full(const struct action *paction,
   case ACTRES_NUKE_UNITS:
   case ACTRES_DESTROY_CITY:
   case ACTRES_EXPEL_UNIT:
-  case ACTRES_RECYCLE_UNIT:
+  case ACTRES_DISBAND_UNIT_RECOVER:
   case ACTRES_DISBAND_UNIT:
   case ACTRES_HOME_CITY:
   case ACTRES_HOMELESS:
@@ -3691,7 +3699,7 @@ action_hard_reqs_actor(const struct action *paction,
   case ACTRES_NUKE_UNITS:
   case ACTRES_DESTROY_CITY:
   case ACTRES_EXPEL_UNIT:
-  case ACTRES_RECYCLE_UNIT:
+  case ACTRES_DISBAND_UNIT_RECOVER:
   case ACTRES_DISBAND_UNIT:
   case ACTRES_HOME_CITY:
   case ACTRES_UPGRADE_UNIT:
@@ -3933,7 +3941,7 @@ is_action_possible(const action_id wanted_action,
     break;
 
   case ACTRES_HELP_WONDER:
-  case ACTRES_RECYCLE_UNIT:
+  case ACTRES_DISBAND_UNIT_RECOVER:
     /* It is only possible to help the production if the production needs
      * the help. (If not it would be possible to add shields for something
      * that can't legally receive help if it is build later) */
@@ -5710,7 +5718,7 @@ action_prob(const action_id wanted_action,
     /* No battle is fought first. */
     chance = ACTPROB_CERTAIN;
     break;
-  case ACTRES_RECYCLE_UNIT:
+  case ACTRES_DISBAND_UNIT_RECOVER:
     /* No battle is fought first. */
     chance = ACTPROB_CERTAIN;
     break;
@@ -7084,7 +7092,7 @@ int action_dice_roll_initial_odds(const struct action *paction)
   case ACTRES_NUKE_UNITS:
   case ACTRES_DESTROY_CITY:
   case ACTRES_EXPEL_UNIT:
-  case ACTRES_RECYCLE_UNIT:
+  case ACTRES_DISBAND_UNIT_RECOVER:
   case ACTRES_DISBAND_UNIT:
   case ACTRES_HOME_CITY:
   case ACTRES_HOMELESS:
@@ -7606,8 +7614,8 @@ const char *action_ui_name_ruleset_var_name(int act)
     return "ui_name_nuke_units";
   case ACTION_DESTROY_CITY:
     return "ui_name_destroy_city";
-  case ACTION_RECYCLE_UNIT:
-    return "ui_name_recycle_unit";
+  case ACTION_DISBAND_UNIT_RECOVER:
+    return "ui_name_disband_unit_recover";
   case ACTION_DISBAND_UNIT:
     return "ui_name_disband_unit";
   case ACTION_HOME_CITY:
@@ -7748,6 +7756,8 @@ const char *action_ui_name_ruleset_var_name(int act)
     return "ui_name_user_action_2";
   case ACTION_USER_ACTION3:
     return "ui_name_user_action_3";
+  case ACTION_USER_ACTION4:
+    return "ui_name_user_action_4";
   case ACTION_COUNT:
     break;
   }
@@ -7892,7 +7902,7 @@ const char *action_ui_name_default(int act)
   case ACTION_DESTROY_CITY:
     /* TRANS: Destroy _City (100% chance of success). */
     return N_("Destroy %sCity%s");
-  case ACTION_RECYCLE_UNIT:
+  case ACTION_DISBAND_UNIT_RECOVER:
     /* TRANS: Dis_band recovering production (100% chance of success). */
     return N_("Dis%sband recovering production%s");
   case ACTION_DISBAND_UNIT:
@@ -8061,6 +8071,9 @@ const char *action_ui_name_default(int act)
   case ACTION_USER_ACTION3:
     /* TRANS: _User Action 3 (100% chance of success). */
     return N_("%sUser Action 3%s");
+  case ACTION_USER_ACTION4:
+    /* TRANS: _User Action 4 (100% chance of success). */
+    return N_("%sUser Action 4%s");
   }
 
   return NULL;
@@ -8111,7 +8124,7 @@ const char *action_min_range_ruleset_var_name(int act)
   case ACTION_SPY_NUKE:
   case ACTION_SPY_NUKE_ESC:
   case ACTION_DESTROY_CITY:
-  case ACTION_RECYCLE_UNIT:
+  case ACTION_DISBAND_UNIT_RECOVER:
   case ACTION_DISBAND_UNIT:
   case ACTION_HOME_CITY:
   case ACTION_HOMELESS:
@@ -8197,6 +8210,8 @@ const char *action_min_range_ruleset_var_name(int act)
     return "user_action_2_min_range";
   case ACTION_USER_ACTION3:
     return "user_action_3_min_range";
+  case ACTION_USER_ACTION4:
+    return "user_action_4_min_range";
   case ACTION_COUNT:
     break;
   }
@@ -8234,7 +8249,7 @@ int action_min_range_default(enum action_result result)
   case ACTRES_SPY_NUKE:
   case ACTRES_DESTROY_CITY:
   case ACTRES_EXPEL_UNIT:
-  case ACTRES_RECYCLE_UNIT:
+  case ACTRES_DISBAND_UNIT_RECOVER:
   case ACTRES_DISBAND_UNIT:
   case ACTRES_HOME_CITY:
   case ACTRES_HOMELESS:
@@ -8401,8 +8416,8 @@ const char *action_max_range_ruleset_var_name(int act)
     return NULL;
   case ACTION_HELP_WONDER:
     return "help_wonder_max_range";
-  case ACTION_RECYCLE_UNIT:
-    return "recycle_unit_max_range";
+  case ACTION_DISBAND_UNIT_RECOVER:
+    return "disband_unit_recover_max_range";
   case ACTION_BOMBARD:
     return "bombard_max_range";
   case ACTION_BOMBARD2:
@@ -8425,6 +8440,8 @@ const char *action_max_range_ruleset_var_name(int act)
     return "user_action_2_max_range";
   case ACTION_USER_ACTION3:
     return "user_action_3_max_range";
+  case ACTION_USER_ACTION4:
+    return "user_action_4_max_range";
   case ACTION_COUNT:
     break;
   }
@@ -8501,7 +8518,7 @@ int action_max_range_default(enum action_result result)
     fc_assert_msg(FALSE, "Probably wrong value.");
     return RS_DEFAULT_ACTION_MAX_RANGE;
   case ACTRES_HELP_WONDER:
-  case ACTRES_RECYCLE_UNIT:
+  case ACTRES_DISBAND_UNIT_RECOVER:
     return RS_DEFAULT_ACTION_MAX_RANGE;
   case ACTRES_BOMBARD:
     return RS_DEFAULT_ACTION_MAX_RANGE;
@@ -8565,7 +8582,7 @@ const char *action_target_kind_ruleset_var_name(int act)
   case ACTION_SPY_NUKE_ESC:
   case ACTION_NUKE_UNITS:
   case ACTION_DESTROY_CITY:
-  case ACTION_RECYCLE_UNIT:
+  case ACTION_DISBAND_UNIT_RECOVER:
   case ACTION_DISBAND_UNIT:
   case ACTION_HOME_CITY:
   case ACTION_HOMELESS:
@@ -8650,6 +8667,8 @@ const char *action_target_kind_ruleset_var_name(int act)
     return "user_action_2_target_kind";
   case ACTION_USER_ACTION3:
     return "user_action_3_target_kind";
+  case ACTION_USER_ACTION4:
+    return "user_action_4_target_kind";
   case ACTION_COUNT:
     break;
   }
@@ -8685,7 +8704,7 @@ action_target_kind_default(enum action_result result)
   case ACTRES_STEAL_MAPS:
   case ACTRES_SPY_NUKE:
   case ACTRES_DESTROY_CITY:
-  case ACTRES_RECYCLE_UNIT:
+  case ACTRES_DISBAND_UNIT_RECOVER:
   case ACTRES_HOME_CITY:
   case ACTRES_UPGRADE_UNIT:
   case ACTRES_AIRLIFT:
@@ -8776,7 +8795,7 @@ bool action_result_legal_target_kind(enum action_result result,
   case ACTRES_STEAL_MAPS:
   case ACTRES_SPY_NUKE:
   case ACTRES_DESTROY_CITY:
-  case ACTRES_RECYCLE_UNIT:
+  case ACTRES_DISBAND_UNIT_RECOVER:
   case ACTRES_HOME_CITY:
   case ACTRES_UPGRADE_UNIT:
   case ACTRES_AIRLIFT:
@@ -8877,7 +8896,7 @@ action_sub_target_kind_default(enum action_result result)
   case ACTRES_STEAL_MAPS:
   case ACTRES_SPY_NUKE:
   case ACTRES_DESTROY_CITY:
-  case ACTRES_RECYCLE_UNIT:
+  case ACTRES_DISBAND_UNIT_RECOVER:
   case ACTRES_HOME_CITY:
   case ACTRES_HOMELESS:
   case ACTRES_UPGRADE_UNIT:
@@ -8972,7 +8991,7 @@ action_target_compl_calc(enum action_result result,
   case ACTRES_STEAL_MAPS:
   case ACTRES_SPY_NUKE:
   case ACTRES_DESTROY_CITY:
-  case ACTRES_RECYCLE_UNIT:
+  case ACTRES_DISBAND_UNIT_RECOVER:
   case ACTRES_HOME_CITY:
   case ACTRES_HOMELESS:
   case ACTRES_UPGRADE_UNIT:
@@ -9082,7 +9101,7 @@ const char *action_actor_consuming_always_ruleset_var_name(action_id act)
   case ACTION_SPY_NUKE:
   case ACTION_SPY_NUKE_ESC:
   case ACTION_DESTROY_CITY:
-  case ACTION_RECYCLE_UNIT:
+  case ACTION_DISBAND_UNIT_RECOVER:
   case ACTION_DISBAND_UNIT:
   case ACTION_HOME_CITY:
   case ACTION_HOMELESS:
@@ -9172,6 +9191,8 @@ const char *action_actor_consuming_always_ruleset_var_name(action_id act)
     return "user_action_2_actor_consuming_always";
   case ACTION_USER_ACTION3:
     return "user_action_3_actor_consuming_always";
+  case ACTION_USER_ACTION4:
+    return "user_action_4_actor_consuming_always";
   case ACTION_COUNT:
     break;
   }
@@ -9263,7 +9284,7 @@ const char *action_blocked_by_ruleset_var_name(const struct action *act)
   case ACTION_SPY_NUKE:
   case ACTION_SPY_NUKE_ESC:
   case ACTION_DESTROY_CITY:
-  case ACTION_RECYCLE_UNIT:
+  case ACTION_DISBAND_UNIT_RECOVER:
   case ACTION_DISBAND_UNIT:
   case ACTION_HOME_CITY:
   case ACTION_HOMELESS:
@@ -9324,6 +9345,7 @@ const char *action_blocked_by_ruleset_var_name(const struct action *act)
   case ACTION_USER_ACTION1:
   case ACTION_USER_ACTION2:
   case ACTION_USER_ACTION3:
+  case ACTION_USER_ACTION4:
     /* blocked_by is not ruleset changeable */
     return NULL;
   case ACTION_COUNT:
@@ -9403,7 +9425,7 @@ action_post_success_forced_ruleset_var_name(const struct action *act)
   case ACTION_SPY_NUKE:
   case ACTION_SPY_NUKE_ESC:
   case ACTION_DESTROY_CITY:
-  case ACTION_RECYCLE_UNIT:
+  case ACTION_DISBAND_UNIT_RECOVER:
   case ACTION_DISBAND_UNIT:
   case ACTION_HOME_CITY:
   case ACTION_HOMELESS:
@@ -9468,6 +9490,7 @@ action_post_success_forced_ruleset_var_name(const struct action *act)
   case ACTION_USER_ACTION1:
   case ACTION_USER_ACTION2:
   case ACTION_USER_ACTION3:
+  case ACTION_USER_ACTION4:
     /* not ruleset changeable */
     return NULL;
   case ACTION_COUNT:

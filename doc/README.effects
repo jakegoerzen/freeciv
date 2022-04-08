@@ -54,6 +54,7 @@ Tech:            World, Alliance, Team, Player
 TechFlag:        World, Alliance, Team, Player
 MinTechs:        World, Player
 Achievement:     World, Alliance, Team, Player
+Counter:         City
 Gov:             Player
 Building:        World, Alliance, Team, Player, Continent, Traderoute, City, Local
 BuildingGenus:   Local
@@ -92,7 +93,8 @@ MaxUnitsOnTile:  Tile, Adjacent, CAdjacent
 TerrainClass:    Tile, Adjacent, CAdjacent, Traderoute, City
 TerrainFlag:     Tile, Adjacent, CAdjacent, Traderoute, City
 TerrainAlter:    Tile
-MinLatitude:     Tile
+MinLatitude:     Tile, Adjacent, CAdjacent, World
+MaxLatitude:     Tile, Adjacent, CAdjacent, World
 CityTile:        Tile, Adjacent, CAdjacent
 CityStatus:      Traderoute, City
 Style:           Player
@@ -109,7 +111,8 @@ TerrainClass is either "Land" or "Oceanic".
 TerrainAlter is "CanIrrigate", "CanMine", "CanRoad", "CanBase", or "CanPlace"
 CityTile is "Center" (city center), "Claimed" (tile owned),
 "Extras Owned" (extra on tile owned), or "Worked" (worked by any city)
-MinLatitude is a number from -1000 (south pole) to 1000 (north pole).
+MinLatitude and MaxLatitude are numbers from -1000 (south pole) to 1000
+(north pole).
 CityStatus is "OwnedByOriginal", "Starved", "Disorder", or "Celebration"
 DiplRel is a diplomatic relationship.
 MaxUnitsOnTile is about the number of units present on a tile.
@@ -217,6 +220,7 @@ Casus_Belli_Caught
     incident gives the intended victim a casus belli against the actor player.
     A value of 1000 or higher is international outrage. International outrage
     gives every other player a casus belli against the actor.
+    This effect is supported only for a limited set of actions.
 
 Casus_Belli_Complete
     Checked when a player completes an action that takes several turns
@@ -225,7 +229,7 @@ Casus_Belli_Complete
     a casus belli against the actor player. A value of 1000 or higher is
     international outrage. International outrage gives every other player a
     casus belli against the actor.
-    Only "Pillage" is currently supported.
+    "Pillage" is the only action currently supported.
 
 Casus_Belli_Success
     Checked when a player does an action to another player. Will cause an
@@ -233,6 +237,7 @@ Casus_Belli_Success
     incident gives the intended victim a casus belli against the actor player.
     A value of 1000 or higher is international outrage. International outrage
     gives every other player a casus belli against the actor.
+    This effect is supported only for a limited set of actions.
 
 City_Build_Slots
     Increase the number of units with no population cost a city can build in
@@ -421,6 +426,11 @@ Max_Trade_Routes
 Migration_Pct
     Increase the calculated migration score for the a city by amount in
     percent.
+
+Min_HP_Pct
+    The minimum HP (pct from full) units that have not moved during
+    previous turn will have in the beginning of the new turn,
+    after the HP_Regen effects have been applied.
 
 Mining_Pct
     The tile gets value % of its terrain's mining_shield_incr bonus.
@@ -655,7 +665,7 @@ Unit_Recover
 Unit_Shield_Value_Pct
     Increase the unit's value in shields by amount percent. When this effect
     is used to determine how many shields the player gets for the actions
-    "Recycle Unit" and "Help Wonder" it gets access to unit state. When it is
+    "Disband Unit Recover" and "Help Wonder" it gets access to unit state. When it is
     used to influence the gold cost of "Upgrade Unit" it only has access to unit
     type.
 

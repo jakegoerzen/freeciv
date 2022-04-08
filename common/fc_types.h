@@ -223,8 +223,8 @@ enum output_type_id {
 #define SPECENUM_VALUE23NAME "Unit Destroy City"
 #define SPECENUM_VALUE24 ACTRES_EXPEL_UNIT
 #define SPECENUM_VALUE24NAME "Unit Expel Unit"
-#define SPECENUM_VALUE25 ACTRES_RECYCLE_UNIT
-#define SPECENUM_VALUE25NAME "Unit Recycle"
+#define SPECENUM_VALUE25 ACTRES_DISBAND_UNIT_RECOVER
+#define SPECENUM_VALUE25NAME "Unit Disband Recover"
 #define SPECENUM_VALUE26 ACTRES_DISBAND_UNIT
 #define SPECENUM_VALUE26NAME "Unit Disband"
 #define SPECENUM_VALUE27 ACTRES_HOME_CITY
@@ -461,6 +461,9 @@ typedef int Unit_Class_id;
  * compatibility code to server/rscompat.c. */
 #define CASUS_BELLI_OUTRAGE 1000
 
+/* Really in ai.c */
+const char *ai_level_name_update_cb(const char *old);
+
 /* Used in the network protocol. */
 /* server/commands.c must match these */
 #define SPECENUM_NAME ai_level
@@ -485,6 +488,7 @@ typedef int Unit_Class_id;
 #endif /* FREECIV_DEBUG */
 
 #define SPECENUM_COUNT AI_LEVEL_COUNT
+#define SPECENUM_NAME_UPDATER
 #include "specenum_gen.h"
 
 /* pplayer->ai.barbarian_type and nations use this enum. */
@@ -608,6 +612,7 @@ enum req_problem_type {
  * Used in the network protocol. */
 typedef union {
   struct advance *advance;
+  struct counter *counter;
   struct government *govern;
   const struct impr_type *building;
   struct nation_type *nation;
@@ -765,6 +770,11 @@ typedef union {
 #define SPECENUM_VALUE48NAME "DiplRelUnitAnyOther"
 #define SPECENUM_VALUE49 VUT_MINLATITUDE
 #define SPECENUM_VALUE49NAME "MinLatitude"
+#define SPECENUM_VALUE50 VUT_MAXLATITUDE
+#define SPECENUM_VALUE50NAME "MaxLatitude"
+#define SPECENUM_VALUE51 VUT_COUNTER
+#define SPECENUM_VALUE51NAME "Counter"
+
 /* Keep this last. */
 #define SPECENUM_COUNT VUT_COUNT
 #include "specenum_gen.h"

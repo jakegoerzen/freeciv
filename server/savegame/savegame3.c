@@ -2006,23 +2006,22 @@ static void sg_load_game(struct loaddata *loading)
 
   level = secfile_lookup_str_default(loading->file, NULL,
                                      "game.level");
-  if (level != NULL) {
-    if (!fc_strcasecmp("Handicapped", level)) {
-      /* Up to freeciv-3.1 Restricted AI level was known as Handicapped */
-      game.info.skill_level = AI_LEVEL_RESTRICTED;
-    } else {
-      game.info.skill_level = ai_level_by_name(level, fc_strcasecmp);
-    }
+  if (level != NULL && !fc_strcasecmp("Handicapped", level)) {
+    /* Up to freeciv-3.1 Restricted AI level was known as Handicapped */
+    game.info.skill_level = AI_LEVEL_RESTRICTED;
   } else {
-    game.info.skill_level = ai_level_invalid();
+    game.info.skill_level = ai_level_by_name(level, fc_strcasecmp);
   }
 
   if (!ai_level_is_valid(game.info.skill_level)) {
-    game.info.skill_level
-      = ai_level_convert(GAME_HARDCODED_DEFAULT_SKILL_LEVEL);
+    log_sg("Invalid AI level \"%s\". "
+           "Changed to \"%s\".", level,
+           ai_level_name(GAME_HARDCODED_DEFAULT_SKILL_LEVEL));
+    game.info.skill_level = GAME_HARDCODED_DEFAULT_SKILL_LEVEL;
   }
-  str  = secfile_lookup_str_default(loading->file, NULL,
-                                    "game.phase_mode");
+
+  str = secfile_lookup_str_default(loading->file, NULL,
+                                   "game.phase_mode");
   if (str != NULL) {
     game.info.phase_mode = phase_mode_type_by_name(str, fc_strcasecmp);
     if (!phase_mode_type_is_valid(game.info.phase_mode)) {
@@ -4109,29 +4108,18 @@ static void sg_load_player_main(struct loaddata *loading,
 
   level = secfile_lookup_str_default(loading->file, NULL,
                                      "player%d.ai.level", plrno);
-  if (level != NULL) {
-    if (!fc_strcasecmp("Handicapped", level)) {
-      /* Up to freeciv-3.1 Restricted AI level was known as Handicapped */
-      plr->ai_common.skill_level = AI_LEVEL_RESTRICTED;
-    } else {
-      plr->ai_common.skill_level = ai_level_by_name(level, fc_strcasecmp);
-    }
-
-    /* In builds where level "Experimental" is not supported, convert it to "Hard" */
-    if (!ai_level_is_valid(plr->ai_common.skill_level)
-        && !fc_strcasecmp(level, "Experimental")) {
-      plr->ai_common.skill_level = AI_LEVEL_HARD;
-    }
+  if (level != NULL && !fc_strcasecmp("Handicapped", level)) {
+    /* Up to freeciv-3.1 Restricted AI level was known as Handicapped */
+    plr->ai_common.skill_level = AI_LEVEL_RESTRICTED;
   } else {
-    plr->ai_common.skill_level = ai_level_invalid();
+    plr->ai_common.skill_level = ai_level_by_name(level, fc_strcasecmp);
   }
 
   if (!ai_level_is_valid(plr->ai_common.skill_level)) {
-    plr->ai_common.skill_level
-      = ai_level_convert(secfile_lookup_int_default(loading->file,
-                                                    game.info.skill_level,
-                                                    "player%d.ai.skill_level",
-                                                    plrno));
+    log_sg("Player%d: Invalid AI level \"%s\". "
+           "Changed to \"%s\".", plrno, level,
+           ai_level_name(game.info.skill_level));
+    plr->ai_common.skill_level = game.info.skill_level;
   }
 
   barb_str = secfile_lookup_str_default(loading->file, "None",
@@ -6759,6 +6747,17 @@ static void sg_load_player_vision(struct loaddata *loading,
                                 ch, loading->extra.order + 4 * j),
                   loading->file, "player%d.map_e%02d_%04d", plrno, j);
   } halfbyte_iterate_extras_end;
+
+  whole_map_iterate(&(wld.map), ptile) {
+    struct player_tile *plrtile = map_get_player_tile(ptile, plr);
+
+    extra_type_by_cause_iterate(EC_RESOURCE, pres) {
+      if (BV_ISSET(plrtile->extras, extra_number(pres))
+          && terrain_has_resource(plrtile->terrain, pres)) {
+        plrtile->resource = pres;
+      }
+    } extra_type_by_cause_iterate_end;
+  } whole_map_iterate_end;
 
   if (game.server.foggedborders) {
     /* Load player map (border). */

@@ -2938,12 +2938,6 @@ static void sg_load_player_main(struct loaddata *loading,
     } else {
       plr->ai_common.skill_level = ai_level_by_name(level, fc_strcasecmp);
     }
-
-    /* In builds where level "Experimental" is not supported, convert it to "Hard" */
-    if (!ai_level_is_valid(plr->ai_common.skill_level)
-        && !fc_strcasecmp(level, "Experimental")) {
-      plr->ai_common.skill_level = AI_LEVEL_HARD;
-    }
   } else {
     plr->ai_common.skill_level = ai_level_invalid();
   }
@@ -3789,9 +3783,9 @@ static int sg_order_to_action(int order, struct unit *act_unit,
      * that anyone that intended to order Help Wonder used Help Wonder. */
     /* Could in theory be intended as an order to disband in the field. Why
      * would the player give a unit an order to go to a non city location
-     * and disband there? Assume the intention was to recycle the unit
-     * until a non recycle disband order is found. */
-    return ACTION_RECYCLE_UNIT;
+     * and disband there? Assume the intention was to recover production
+     * until a non recovering disband order is found. */
+    return ACTION_DISBAND_UNIT_RECOVER;
   case ORDER_OLD_HOMECITY:
     return ACTION_HOME_CITY;
   }

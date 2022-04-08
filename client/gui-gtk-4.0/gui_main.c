@@ -308,11 +308,11 @@ static void parse_options(int argc, char **argv)
         exit(EXIT_FAILURE);
       }
       free(option);
+    } else {
+      fc_fprintf(stderr, _("Unknown command-line option \"%s\".\n"),
+                 argv[i]);
+      exit(EXIT_FAILURE);
     }
-    /* Can't check against unknown options, as those might be gtk options */
-    /* TODO: gtk is about to drop its commandline options anyway,
-     *       so we can stop supporting them and have error checking
-     *       added here. */
 
     i++;
   }
@@ -348,17 +348,16 @@ static gboolean toplevel_focus(GtkWidget *w, GtkDirectionType arg)
   prevents users from accidentally missing messages when the chatline
   gets scrolled up a small amount and stops scrolling down automatically.
 **************************************************************************/
-static void main_message_area_size_allocate(GtkWidget *widget,
-                                            GtkAllocation *allocation,
-                                            gpointer data)
+static void main_message_area_resize(GtkWidget *widget, int width, int height,
+                                     gpointer data)
 {
   static int old_width = 0, old_height = 0;
 
-  if (allocation->width != old_width
-      || allocation->height != old_height) {
+  if (width != old_width
+      || height != old_height) {
     chatline_scroll_to_bottom(TRUE);
-    old_width = allocation->width;
-    old_height = allocation->height;
+    old_width = width;
+    old_height = height;
   }
 }
 
@@ -1507,8 +1506,8 @@ static void setup_widgets(void)
   gtk_drawing_area_set_draw_func(GTK_DRAWING_AREA(map_canvas), map_canvas_draw,
                                  NULL, NULL);
 
-  g_signal_connect(map_canvas, "size-allocate",
-                   G_CALLBACK(map_canvas_configure), NULL);
+  g_signal_connect(map_canvas, "resize",
+                   G_CALLBACK(map_canvas_resize), NULL);
 
   g_signal_connect(map_canvas, "motion_notify_event",
                    G_CALLBACK(move_mapcanvas), NULL);
@@ -1594,8 +1593,8 @@ static void setup_widgets(void)
   set_message_buffer_view_link_handlers(text);
   gtk_text_view_set_editable(GTK_TEXT_VIEW(text), FALSE);
   gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(sw), text);
-  g_signal_connect(text, "size-allocate",
-                   G_CALLBACK(main_message_area_size_allocate), NULL);
+  g_signal_connect(text, "resize",
+                   G_CALLBACK(main_message_area_resize), NULL);
 
   gtk_widget_set_name(text, "chatline");
 
@@ -1835,7 +1834,7 @@ void ui_main(int argc, char **argv)
 {
   parse_options(argc, argv);
 
-  /* the locale has already been set in init_nls() and the Win32-specific
+  /* the locale has already been set in init_nls() and the windows-specific
    * locale logic in gtk_init() causes problems with zh_CN (see PR#39475) */
   gtk_disable_setlocale();
 

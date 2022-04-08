@@ -321,9 +321,6 @@ static void parse_options(int argc, char **argv)
       free(option);
     }
     /* Can't check against unknown options, as those might be gtk options */
-    /* TODO: gtk+ is about to drop its commandline options anyway,
-     *       so we can stop supporting them and have error checking
-     *       added here. */
 
     i++;
   }
@@ -1842,7 +1839,7 @@ void ui_main(int argc, char **argv)
 
   parse_options(argc, argv);
 
-  /* the locale has already been set in init_nls() and the Win32-specific
+  /* the locale has already been set in init_nls() and the windows-specific
    * locale logic in gtk_init() causes problems with zh_CN (see PR#39475) */
   gtk_disable_setlocale();
 

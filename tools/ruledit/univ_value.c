@@ -17,6 +17,7 @@
 
 /* common */
 #include "achievements.h"
+#include "counters.h"
 #include "game.h"
 #include "government.h"
 #include "requirements.h"
@@ -48,6 +49,12 @@ bool universal_value_initial(struct universal *src)
       return FALSE;
     }
     src->value.advance = advance_by_number(A_NONE);
+    return TRUE;
+  case VUT_COUNTER:
+    if (counters_get_city_counters_count() <= 0) {
+      return FALSE;
+    }
+    src->value.counter = counter_by_index(0, CTGT_CITY);
     return TRUE;
   case VUT_GOVERNMENT:
     src->value.govern = game.government_during_revolution;
@@ -217,6 +224,7 @@ bool universal_value_initial(struct universal *src)
     src->value.extraflag = EF_NATIVE_TILE;
     return TRUE;
   case VUT_MINLATITUDE:
+  case VUT_MAXLATITUDE:
     src->value.latitude = 0;
     return TRUE;
   case VUT_COUNT:
@@ -242,6 +250,11 @@ void universal_kind_values(struct universal *univ,
     advance_re_active_iterate(padv) {
       cb(advance_rule_name(padv), univ->value.advance == padv, data);
     } advance_re_active_iterate_end;
+    break;
+  case VUT_COUNTER:
+    city_counters_iterate(pcount) {
+      cb(counter_rule_name(pcount), univ->value.counter == pcount, data);
+    } city_counters_iterate_end;
     break;
   case VUT_GOVERNMENT:
     governments_re_active_iterate(pgov) {
@@ -438,6 +451,7 @@ void universal_kind_values(struct universal *univ,
   case VUT_AGE:
   case VUT_MINTECHS:
   case VUT_MINLATITUDE:
+  case VUT_MAXLATITUDE:
     /* Requirement types having numerical value */
     cb(NULL, FALSE, data);
     break;

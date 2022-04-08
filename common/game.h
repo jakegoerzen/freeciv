@@ -271,6 +271,8 @@ struct civ_game {
 
       struct player *random_move_time;
 
+      char default_ai_type_name[256];
+
       struct {
         char *description_file;
         char *nationlist;
@@ -346,6 +348,24 @@ void user_flag_init(struct user_flag *flag);
 void user_flag_free(struct user_flag *flag);
 
 int current_turn_timeout(void);
+
+extern bool _ruleset_compat_mode;
+
+/**********************************************************************//**
+  Set ruleset compat mode indicator
+**************************************************************************/
+static inline void set_ruleset_compat_mode(bool active)
+{
+  _ruleset_compat_mode = active;
+}
+
+/**********************************************************************//**
+  Get ruleset compat mode indicator
+**************************************************************************/
+static inline bool is_ruleset_compat_mode(void)
+{
+  return _ruleset_compat_mode;
+}
 
 extern struct civ_game game;
 extern struct world wld;

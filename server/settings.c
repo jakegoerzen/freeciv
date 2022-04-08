@@ -29,6 +29,7 @@
 #include "map.h"
 
 /* server */
+#include "aiiface.h"
 #include "gamehand.h"
 #include "maphand.h"
 #include "meta.h"
@@ -171,6 +172,8 @@ struct setting {
   /* ruleset lock for game settings */
   bool locked;
 
+  bool ruleset_settable;
+
   /* It's not "default", even if value is the same as default */
   enum setting_default_level setdef;
   enum setting_default_level game_setdef;
@@ -205,7 +208,7 @@ static bool set_enum_value(struct setting *pset, int val);
 
   Important note about compatibility:
   1) you cannot modify the support name of an existant value. However, in a
-     developpement, you can modify it if it wasn't included in any stable
+     development, you can modify it if it wasn't included in any stable
      branch before.
   2) Take care of modifiying the pretty name of an existant value: make sure
   to modify the help texts which are using it.
@@ -804,6 +807,16 @@ static void metamessage_action(const struct setting *pset)
   }
 }
 
+/************************************************************************//**
+  Change the default AI type.
+****************************************************************************/
+static void aitype_action(const struct setting *pset)
+{
+  if (!set_default_ai_type_name(pset->string.value)) {
+    log_warn(_("Failed to update default AI type."));
+  }
+}
+
 /****************************************************************************
   Validation callback functions.
 ****************************************************************************/
@@ -1274,6 +1287,22 @@ static bool topology_callback(unsigned value, struct connection *caller,
 }
 
 /************************************************************************//**
+  AI type setting validation callback.
+****************************************************************************/
+static bool aitype_callback(const char *value, struct connection *caller,
+                            char *reject_msg, size_t reject_msg_len)
+{
+  if (ai_type_by_name(value) == NULL) {
+    settings_snprintf(reject_msg, reject_msg_len,
+                      _("No such AI type loaded."));
+
+    return FALSE;
+  }
+
+  return TRUE;
+}
+
+/************************************************************************//**
   Validate that the player color mode can be used.
 ****************************************************************************/
 static bool plrcol_validate(int value, struct connection *caller,
@@ -1302,7 +1331,7 @@ static bool plrcol_validate(int value, struct connection *caller,
       scateg, slevel,                                                       \
       INIT_BRACE_BEGIN                                                      \
       .boolean = {&value, _default, func_validate, bool_name,               \
-                  FALSE} INIT_BRACE_END , func_action, FALSE},
+     FALSE} INIT_BRACE_END , func_action, FALSE, .ruleset_settable = TRUE},
 
 #define GEN_INT(name, value, sclass, scateg, slevel, al_read, al_write, \
                 short_help, extra_help, func_help,                      \
@@ -1313,7 +1342,7 @@ static bool plrcol_validate(int value, struct connection *caller,
       INIT_BRACE_BEGIN                                                  \
       .integer = {(int *) &value, _default, _min, _max, func_validate,  \
                   0} INIT_BRACE_END,                                    \
-      func_action, FALSE},
+      func_action, FALSE, .ruleset_settable = TRUE},
 
 #define GEN_STRING(name, value, sclass, scateg, slevel, al_read, al_write, \
                    short_help, extra_help, func_validate, func_action,  \
@@ -1323,7 +1352,17 @@ static bool plrcol_validate(int value, struct connection *caller,
       INIT_BRACE_BEGIN                                                  \
       .string = {value, _default, sizeof(value), func_validate, ""}     \
       INIT_BRACE_END,                                                   \
-      func_action, FALSE},
+      func_action, FALSE, .ruleset_settable = TRUE},
+
+#define GEN_STRING_NRS(name, value, sclass, scateg, slevel, al_read, al_write, \
+                       short_help, extra_help, func_validate, func_action, \
+                       _default)                                        \
+  {name, sclass, al_read, al_write, short_help, extra_help, NULL,       \
+      SST_STRING, scateg, slevel,                                       \
+      INIT_BRACE_BEGIN                                                  \
+      .string = {value, _default, sizeof(value), func_validate, ""}     \
+      INIT_BRACE_END,                                                   \
+      func_action, FALSE, .ruleset_settable = FALSE},
 
 #define GEN_ENUM(name, value, sclass, scateg, slevel, al_read, al_write,    \
                  short_help, extra_help, func_help, func_validate,          \
@@ -1334,7 +1373,7 @@ static bool plrcol_validate(int value, struct connection *caller,
       .enumerator = {  &value, sizeof(value), _default,                     \
                        func_validate,                                       \
        (val_name_func_t) func_name, 0 } INIT_BRACE_END,                     \
-     func_action, FALSE},
+      func_action, FALSE, .ruleset_settable = TRUE},
 
 #define GEN_BITWISE(name, value, sclass, scateg, slevel, al_read, al_write, \
                    short_help, extra_help, func_validate, func_action,      \
@@ -1344,7 +1383,7 @@ static bool plrcol_validate(int value, struct connection *caller,
       INIT_BRACE_BEGIN                                                      \
       .bitwise = { (unsigned *) (void *) &value, _default, func_validate,   \
                    func_name, 0 } INIT_BRACE_END,                           \
-      func_action, FALSE},
+      func_action, FALSE, .ruleset_settable = TRUE},
 
 /* game settings */
 static struct setting settings[] = {
@@ -3075,15 +3114,23 @@ static struct setting settings[] = {
              "affect users kicked in the past."), NULL, NULL, NULL,
           GAME_MIN_KICK_TIME, GAME_MAX_KICK_TIME, GAME_DEFAULT_KICK_TIME)
 
-  GEN_STRING("metamessage", game.server.meta_info.user_message,
-             SSET_META, SSET_INTERNAL, SSET_RARE, ALLOW_CTRL, ALLOW_CTRL,
-             N_("Metaserver info line"),
-             N_("User defined metaserver info line. For most of the time "
-                "a user defined metamessage will be used instead of an "
-                "automatically generated message. "
-                "Set to empty (\"\", not \"empty\") to always use an "
-                "automatically generated meta server message."),
-             NULL, metamessage_action, GAME_DEFAULT_USER_META_MESSAGE)
+  GEN_STRING_NRS("metamessage", game.server.meta_info.user_message,
+                 SSET_META, SSET_INTERNAL, SSET_RARE, ALLOW_CTRL, ALLOW_CTRL,
+                 N_("Metaserver info line"),
+                 N_("User defined metaserver info line. For most of the time "
+                    "a user defined metamessage will be used instead of an "
+                    "automatically generated message. "
+                    "Set to empty (\"\", not \"empty\") to always use an "
+                    "automatically generated meta server message."),
+                 NULL, metamessage_action, GAME_DEFAULT_USER_META_MESSAGE)
+
+  GEN_STRING_NRS("aitype", game.server.default_ai_type_name,
+                 SSET_META, SSET_INTERNAL, SSET_RARE, ALLOW_HACK, ALLOW_HACK,
+                 N_("Default AI type"),
+                 N_("Name of the default AI type. New AI players will be "
+                    "created with that type by default. Changing this "
+                    "setting does not affect existing AI players."),
+                 aitype_callback, aitype_action, AI_MOD_DEFAULT)
 };
 
 #undef GEN_BOOL
@@ -4165,7 +4212,9 @@ bool settings_ruleset(struct section_file *file, const char *section,
   /* Unlock all settings. */
   settings_iterate(SSET_ALL, pset) {
     setting_lock_set(pset, FALSE);
-    setting_set_to_default(pset);
+    if (pset->ruleset_settable) {
+      setting_set_to_default(pset);
+    }
   } settings_iterate_end;
 
   /* settings */
@@ -4177,6 +4226,7 @@ bool settings_ruleset(struct section_file *file, const char *section,
     for (j = 0; (name = secfile_lookup_str_default(file, NULL, "%s.set%d.name",
                                                    section, j)); j++) {
       char path[256];
+
       fc_snprintf(path, sizeof(path), "%s.set%d", section, j);
 
       if (compat) {
@@ -4184,7 +4234,8 @@ bool settings_ruleset(struct section_file *file, const char *section,
       }
 
       if (!setting_ruleset_one(file, name, path, compat)) {
-        log_error("unknown setting in '%s': %s", secfile_name(file), name);
+        log_error("unknown unsettable setting in '%s': %s",
+                  secfile_name(file), name);
       }
     }
   }
@@ -4193,7 +4244,9 @@ bool settings_ruleset(struct section_file *file, const char *section,
    * default values. */
   if (act) {
     settings_iterate(SSET_ALL, pset) {
-      setting_action(pset);
+      if (pset->ruleset_settable) {
+        setting_action(pset);
+      }
     } settings_iterate_end;
   }
 
@@ -4223,8 +4276,8 @@ static bool setting_ruleset_one(struct section_file *file,
     }
   } settings_iterate_end;
 
-  if (pset == NULL) {
-    /* no setting found */
+  if (pset == NULL || !pset->ruleset_settable) {
+    /* No setting found or it's not settable by ruleset */
     return FALSE;
   }
 
